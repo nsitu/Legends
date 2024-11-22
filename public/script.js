@@ -141,6 +141,15 @@ const fetchStories = (location) => {
   .then(response => response.json())
   .then(stories => { 
     console.log(stories)
+
+    if (stories.length === 0) {
+      // If no stories, keep the map centered on the user's location
+      storyMap.setCenter(location);
+      storyMap.setZoom(12);
+      console.log("No stories found. Displaying map centered on user's location.");
+      return;
+    }
+
     for (story of stories) { 
       /* pass along each story to be mapped.*/ 
       mapStory( story )
