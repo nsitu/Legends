@@ -382,3 +382,11 @@ refreshButton.addEventListener('click', () => {
   })
 })
 
+// When the textarea is focused, scroll to the bottom of the page.
+// This helps on mobile devices where the keyboard can obscure the input.
+createText.addEventListener('focus', () => {
+  setTimeout(() => {
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
+  }, 300) // Small delay to allow keyboard to appear first
+})
+
