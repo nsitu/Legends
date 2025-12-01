@@ -11,7 +11,8 @@ You will need to add a MongoDB connection string to your environment so that sto
 DATABASE_URL=mongodb+srv://user:pass@cluster0.abc123.mongodb.net/database
 ```
 
-## Mon
+## Mongoose vs Prisma
+This project uses [Mongoose](https://mongoosejs.com/) to communicate with the database. This differs somewhat from other examples in our course (elsewhere, we used [Prisma](https://www.npmjs.com/package/prisma)). The reason we're using Mongoose here is that it supports [geospatial indexes](https://mongoosejs.com/docs/8.x/docs/geojson.html#geospatial-indexes), which can improve performance for location-based queries.
 
 ## Google Maps Setup 
 The included Google Maps Key is restricted for use on `localhost:3000` and `*.vercel.app/*`. Feel free to use it for your student project. If you'd like to get your own key, keep reading!
