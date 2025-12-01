@@ -29,6 +29,7 @@ let storyMap              /* Map for stories. */
 let storyBounds           /* an area on the map big enough to fit all stories. */
 let currentStory          /* keep track of which info-window is currently open.*/
 let activeMarkers = []    /* keep track of the stories currently on the map. */
+let editingStoryId = null /* track if we are editing an existing story */
 
 /*  Function to initialize Google Maps 
 Runs automatically via a callback after the Google Maps script loads. */
@@ -188,6 +189,22 @@ const deleteStory = async (storyId) => {
   }
 }
 
+/* Edit a story by ID - switches to create mode with pre-filled content */
+const editStory = (storyId, currentContent, lng, lat) => {
+  // Close the info window
+  try { currentStory.close() } catch (e) { }
+  // Set the editing state
+  editingStoryId = storyId
+  // Switch to create mode
+  createMode()
+  // Populate the form with existing content
+  createText.value = currentContent
+  // Set picker to the story's location
+  const storyLocation = { lat, lng }
+  pickerMap.setCenter(storyLocation)
+  pickerMarker.position = storyLocation
+}
+
 /* Given a JSON object that describes a story, 
 we are ready to add it to the map.*/
 const mapStory = (story) => {
@@ -207,12 +224,15 @@ const mapStory = (story) => {
     content: ` 
       <div style="display: flex; justify-content: space-between; align-items: start;">
         <img src="bookmark.svg" style="width: 2rem; height: 2rem; margin-right: 20px;">
-        <div style="margin-right: 1rem;">
+        <div style="margin-right: 1rem; margin-bottom: 1rem;">
           <p style="margin: 0px;">${story.content}</p>
           <p style="font-size: 0.8rem; color: #666; margin-top: 0.5rem;">
             ${story.createdAt ? niceDate(story.createdAt) : 'Date Unknown'}
           </p>
-          <img src="delete.svg" onclick="deleteStory('${story._id}')" style="width: 1.2rem; height: 1.2rem; margin-top: 0.5rem; cursor: pointer; opacity: 0.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
+          <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+            <img src="edit.svg" onclick="editStory('${story._id}', '${story.content.replace(/'/g, "\\'").replace(/"/g, '&quot;')}', ${story.location.coordinates[0]}, ${story.location.coordinates[1]})" style="width: 1.2rem; height: 1.2rem; cursor: pointer; opacity: 0.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
+            <img src="delete.svg" onclick="deleteStory('${story._id}')" style="width: 1.2rem; height: 1.2rem; cursor: pointer; opacity: 0.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
+          </div>
         </div>
       </div> 
     `
@@ -257,12 +277,14 @@ const mapStory = (story) => {
 // The story map is hidden.
 const createMode = () => {
   console.log('Switching to createMode')
-  /* Reset the text area to be blank initially. */
-  createText.value = ''
-  /* Set the position of the picker map to match the storyMap. */
-  pickerMap.setZoom(storyMap.getZoom())
-  pickerMap.setCenter(storyMap.getCenter())
-  pickerMarker.position = storyMap.getCenter();
+  /* Reset the text area to be blank initially (unless editing). */
+  if (!editingStoryId) {
+    createText.value = ''
+    /* Set the position of the picker map to match the storyMap. */
+    pickerMap.setZoom(storyMap.getZoom())
+    pickerMap.setCenter(storyMap.getCenter())
+    pickerMarker.position = storyMap.getCenter();
+  }
   /** Show and hide elements as needed */
   createButton.classList.add('active')
   mapButton.classList.remove('active')
@@ -289,7 +311,10 @@ const resetMarkers = () => {
 }
 
 // event listeners for various buttons.
-createButton.addEventListener('click', () => createMode())
+createButton.addEventListener('click', () => {
+  editingStoryId = null  // Clear editing state when clicking Create button
+  createMode()
+})
 mapButton.addEventListener('click', () => mapMode())
 
 
@@ -297,31 +322,52 @@ storyForm.addEventListener('submit', async (event) => {
   event.preventDefault()
   /* Get the location of the picker */
   let { lat, lng } = pickerMarker.position;
-  /* Send the story to NodeJS for insertion into Mongo.*/
-  const response = await fetch('/api/story', {
-    "method": "POST",
-    "headers": { 'Content-Type': 'application/json' },
-    "body": JSON.stringify({
-      "content": createText.value,
-      "location": {
-        "type": "Point",
-        "coordinates": [lng, lat]
-      }
+
+  let json;
+
+  if (editingStoryId) {
+    /* Update existing story */
+    const response = await fetch(`/api/story/${editingStoryId}`, {
+      "method": "PUT",
+      "headers": { 'Content-Type': 'application/json' },
+      "body": JSON.stringify({
+        "content": createText.value
+      })
     })
-  })
-  const json = await response.json()
-  console.log(json)
+    json = await response.json()
+    console.log('Story updated:', json)
+  } else {
+    /* Create new story */
+    const response = await fetch('/api/story', {
+      "method": "POST",
+      "headers": { 'Content-Type': 'application/json' },
+      "body": JSON.stringify({
+        "content": createText.value,
+        "location": {
+          "type": "Point",
+          "coordinates": [lng, lat]
+        }
+      })
+    })
+    json = await response.json()
+    console.log('Story created:', json)
+  }
+
+  const storyId = editingStoryId || json.status._id
+
+  // Clear editing state
+  editingStoryId = null
+
   mapMode()
   resetMarkers()
-  // after creating a new story, refresh the map 
-  // populate it with content nearby to the new story.
-  // then pan to the new story's location
+  // after creating/editing a story, refresh the map 
+  // populate it with content nearby to the story's location
   await fetchStories({ lat, lng })
   storyMap.panTo({ lat, lng })
-  // open the info window for the newly created story
-  const newStoryMarker = activeMarkers.find(marker => marker.storyId === json.status._id)
-  if (newStoryMarker) {
-    google.maps.event.trigger(newStoryMarker, 'click')
+  // open the info window for the story
+  const storyMarker = activeMarkers.find(marker => marker.storyId === storyId)
+  if (storyMarker) {
+    google.maps.event.trigger(storyMarker, 'click')
   }
 })
 

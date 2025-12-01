@@ -8,31 +8,38 @@ The value of the variable must be a valid MongoDB connection string.
 You can locate the string in your MongoDB Atlas dashboard.
 See also: https://account.mongodb.com/account/login  
 See also: https://mongoosejs.com/docs/connections.html */
+import mongoose from 'mongoose';
 
-import mongoose from 'mongoose'
-mongoose.connect(process.env.DATABASE_URL)
-  .then(mongoose => {
-    console.log(`Mongoose ${mongoose.version} connected to MongoDB.`)
-    console.log(`Host: ${mongoose.connection.host}`)
-  })
-  .catch(error => handleError(error));
+let connection = null;
 
-const handleError = (error) => {
-  console.log("MongoDB connection failed.")
-  console.log(error.message)
-  if (process.env.DATABASE_URL) {
-    console.log("DATABASE_URL=" + process.env.DATABASE_URL)
+function connectToDatabase() {
+  if (!connection) {
+    connection = mongoose.connect(process.env.DATABASE_URL)
+      .then(mongooseInstance => {
+        console.log(`Mongoose ${mongooseInstance.version} connected to MongoDB.`);
+        console.log(`Host: ${mongooseInstance.connection.host}`);
+        return mongooseInstance;
+      })
+      .catch(error => {
+        console.log('MongoDB connection failed.');
+        console.log(error.message);
+        // Allow future retries
+        connection = null;
+        throw error;
+      });
   }
-  else {
-    console.log("DATABASE_URL environment variable not found.")
+  return connection;
+}
+
+async function mongoReady(req, res, next) {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    return res
+      .status(503)
+      .json({ error: 'Database connection not ready' });
   }
 }
 
-function mongoReady(req, res, next) {
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).send()
-  }
-  next();
-}
-
-export { mongoReady }
+export { mongoReady };

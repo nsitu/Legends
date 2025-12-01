@@ -75,6 +75,24 @@ app.delete('/api/story/:id', mongoReady, async (req, res) => {
     }
 })
 
+/* Update endpoint for editing story content */
+app.put('/api/story/:id', mongoReady, async (req, res) => {
+    try {
+        const result = await Story.findByIdAndUpdate(
+            req.params.id,
+            { content: req.body.content },
+            { new: true } // return the updated document
+        )
+        if (result) {
+            res.send({ status: 'updated', story: result })
+        } else {
+            res.status(404).send({ error: 'Story not found' })
+        }
+    } catch (err) {
+        res.status(500).send({ error: 'Failed to update story' })
+    }
+})
+
 
 const port = 3000
 // Start Express
